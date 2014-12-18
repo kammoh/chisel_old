@@ -29,19 +29,11 @@
 */
 
 package Chisel
-import Node._
-import java.io.File;
-import java.io.InputStream
-import java.io.OutputStream
-import java.io.PrintStream
-import scala.sys.process._
-import Reg._
-import ChiselError._
-import scala.collection.mutable.ArrayBuffer
-import scala.collection.mutable.HashSet
-import scala.collection.mutable.HashMap
-import scala.collection.mutable.LinkedHashMap
+import java.io.File
+
 import scala.collection.immutable.ListSet
+import scala.collection.mutable.{ArrayBuffer, HashMap, HashSet, LinkedHashMap}
+import scala.sys.process._
 
 object VerilogBackend {
 
@@ -1002,16 +994,28 @@ class VerilogBackend extends Backend {
                 println(s"WARNING: Unable to copy '$filename'" )
           }
     }
+    def findAllVerilogFiles(dir: File): Array[File] = {
+      val these = dir.listFiles
+      these.filter(_.getName.endsWith(".v")) ++
+        these.filter(_.isDirectory).flatMap(findAllVerilogFiles(_))
+    }
     copyToTarget("vpi_user.cc")
     val n = Driver.appendString(Some(c.name),Driver.chiselConfigClassName)
     def run(cmd: String) {
+      println("run: " + cmd)
       val bashCmd = Seq("bash", "-c", cmd)
       val c = bashCmd.!
       ChiselError.info(cmd + " RET " + c)
     }
+    val verilogDirName = "VerilogModules"
+    val verilogDir = new File(verilogDirName)
+
+    val verilogSrcList = if (verilogDir.exists) findAllVerilogFiles(verilogDir).map(_.getAbsolutePath) else Array[String]()
+    val verilogSrcString = verilogSrcList.mkString(" ")
+
     val dir = Driver.targetDir + "/"
-    val src = n + "-harness.v " + n + ".v"
-    val cmd =  "cd " + dir + " && vcs -full64 -quiet +v2k -Mdir=" + n + ".csrc " +
+    val src = n + "-harness.v " + n + ".v " + verilogSrcString
+    val cmd =  "cd " + dir + " && vcs -full64 -sverilog -quiet +v2k -Mdir=" + n + ".csrc " +
               "-timescale=1ns/1ps +define+CLOCK_PERIOD=120 +vpi -use_vpiobj vpi_user.cc " +
               "+vcs+initreg+random " + src + " -o " + n + " -debug_pp"
     run(cmd)
